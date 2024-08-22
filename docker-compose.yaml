@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  opensearch:
+    image: opensearchproject/opensearch:latest
+    container_name: opensearch
+    environment:
+      - discovery.type=single-node
+      - OPENSEARCH_JAVA_OPTS=-Xmx1g -Xms1g
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=secret1Password
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    networks:
+      - log-net
+
+  kibana:
+    image: opensearchproject/opensearch-dashboards:latest
+    container_name: kibana
+    environment:
+      - OPENSEARCH_HOSTS=https://opensearch:9200
+    ports:
+      - "5601:5601"
+    networks:
+      - log-net
+    depends_on:
+      - opensearch
+
+  logstash:
+    image: opensearchproject/logstash-oss-with-opensearch-output-plugin:8.9.0
+    container_name: logstash
+    volumes:
+      - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml
+      - ./logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    ports:
+      - "5044:5044" 
+    networks:
+      - log-net
+    depends_on:
+      - opensearch
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9600/_node/stats"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+      timeout: 3s
+
+  log-app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: log-app
+    ports:
+      - "3000:3000"
+    networks:
+      - log-net
+    depends_on:
+      logstash:
+        condition: service_healthy
+
+networks:
+  log-net:
+    driver: bridge
+    
